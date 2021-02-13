@@ -1,10 +1,16 @@
-PREFIX=arm-none-eabi-
+CC = arm-none-eabi-gcc
+LD = arm-none-eabi-ld
+OBJCOPY = arm-none-eabi-objcopy
 
 nespire.tns : nespire.elf
-	$(PREFIX)objcopy -Obinary $< $@
+	$(OBJCOPY) -O binary $< $@
 
 nespire.elf : main.o cpu.o debug.o memory.o ppu.o rom.o menu.o
-	$(PREFIX)ld main.o cpu.o debug.o memory.o ppu.o rom.o menu.o -o $@
+	$(LD) -e main main.o cpu.o debug.o memory.o ppu.o rom.o menu.o -o $@
 
-%.o : %.S
-	$(PREFIX)gcc -c $< -o $@
+%.o : %.s
+	$(CC) -mcpu=arm926ej-s -c $< -o $@
+
+.PHONY : clean
+clean :
+	-rm -f *.o *.elf nespire.tns
