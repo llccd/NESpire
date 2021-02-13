@@ -11,7 +11,7 @@ ppu_next_scanline:
 	add	r0, r0, #1
 
 	cmp	r0, #-1          @ Vblank is over
-	biceq	r10, r10, #0xC00000
+	biceq	r10, r10, #0xE00000
 
 	cmp	r0, #241         @ Vblank is starting
 	bne	1f
@@ -129,7 +129,7 @@ background_done:
 	add	sp, sp, r0, lsr #29
 
 	@ Step II: Sprites
-	tst	r10, #0x1000
+	tst	r10, #0x1800
 	beq	no_sprites
 
 	@ Get sprite height (minus 1)
@@ -153,6 +153,10 @@ background_done:
 	@ Only up to 8 sprites are actually stored in the table
 	cmp	r1, #8
 	movcs	r1, #8
+	orrcs	r10, r10, #0x200000
+
+	tst	r10, #0x1000
+	beq	no_sprites
 
 	sub	r0, r0, #1
 sprite_loop:
@@ -294,6 +298,8 @@ frameskipped:
 	@ Check for sprite 0 hit
 	@ (TODO: should only occur when two opaque pixels collide)
 	tst	r10, #0x1000
+	beq	sprite_0_done
+	tst	r10, #0x0800
 	beq	sprite_0_done
 	tst	r10, #0x0020
 	moveq	r12, #7
