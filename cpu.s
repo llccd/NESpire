@@ -7,7 +7,6 @@
 @   but it's not worth it to kill performance just for one obscure game)
 @ - Extra memory accesses (in read-modify-write instructions,
 @   or indexing carry) are not implemented
-@ - Most of the "undocumented" instructions are not implemented
 
 .equ	NES_FLAG_C, 0x01
 .equ	NES_FLAG_Z, 0x02
@@ -322,6 +321,58 @@
 	orrcs	cpu_flags, cpu_flags, #ARM_FLAG_N
 	orrmi	cpu_flags, cpu_flags, #ARM_FLAG_V
 .endm
+.macro	OP_LAX
+	bic	cpu_flags, cpu_flags, #ARM_FLAG_N | ARM_FLAG_Z
+	movs	cpu_a, r0, lsl #24
+	orrmi	cpu_flags, cpu_flags, #ARM_FLAG_N
+	orreq	cpu_flags, cpu_flags, #ARM_FLAG_Z
+	mov	cpu_x, r0, lsl #24
+.endm
+.macro	OP_ALR
+	and	cpu_a, cpu_a, r0, lsl #24
+	msr	cpsr_f, cpu_flags
+	movs	cpu_a, cpu_a, lsr #25
+	mov	cpu_a, cpu_a, lsl #24
+	mrs	cpu_flags, cpsr
+.endm
+.macro	OP_ANC
+	bic	cpu_flags, cpu_flags, #ARM_FLAG_N | ARM_FLAG_Z | ARM_FLAG_C
+	ands	cpu_a, cpu_a, r0, lsl #24
+	orrmi	cpu_flags, cpu_flags, #ARM_FLAG_N | ARM_FLAG_C
+	orreq	cpu_flags, cpu_flags, #ARM_FLAG_Z
+.endm
+.macro	OP_ARR
+	mov	cpu_a, cpu_a, lsr #24
+	and	cpu_a, cpu_a, r0
+	msr	cpsr_f, cpu_flags
+	movs	cpu_a, cpu_a, rrx
+	mrs	cpu_flags, cpsr
+	orr	cpu_a, cpu_a, lsl #24
+	and	cpu_a, cpu_a, #0xFF000000
+	bic	cpu_flags, cpu_flags, #ARM_FLAG_C | ARM_FLAG_V
+	tst	cpu_a, #0x40000000
+	orrne	cpu_flags, cpu_flags, #ARM_FLAG_C | ARM_FLAG_V
+	tst	cpu_a, #0x20000000
+	eorne	cpu_flags, cpu_flags, #ARM_FLAG_V
+.endm
+.macro	OP_AXS
+	and	cpu_x, cpu_x, cpu_a
+	bic	cpu_flags, cpu_flags, #ARM_FLAG_N | ARM_FLAG_Z | ARM_FLAG_C
+	subs	cpu_x, cpu_x, r0, ror #8
+	orrmi	cpu_flags, cpu_flags, #ARM_FLAG_N
+	orreq	cpu_flags, cpu_flags, #ARM_FLAG_Z
+	orrcs	cpu_flags, cpu_flags, #ARM_FLAG_C
+.endm
+.macro	OP_LAS
+	and	r0, cpu_sp, r0
+	mov	cpu_sp, r0
+	bic	cpu_flags, cpu_flags, #ARM_FLAG_N | ARM_FLAG_Z
+	movs	cpu_a, r0, lsl #24
+	orrmi	cpu_flags, cpu_flags, #ARM_FLAG_N
+	orreq	cpu_flags, cpu_flags, #ARM_FLAG_Z
+	mov	cpu_x, r0, lsl #24
+.endm
+.macro	OP_XAA; mov cpu_a, cpu_x; OP_AND; .endm
 
 @ Write operations
 
@@ -333,6 +384,10 @@
 .endm
 .macro	OP_STY
 	mov	r0, cpu_y, lsr #24
+.endm
+.macro	OP_SAX
+	mov	r0, cpu_a, lsr #24
+	and	r0, r0, cpu_x, lsr #24
 .endm
 
 @ Read-modify-write operations
@@ -414,6 +469,27 @@
 	adds	\reg, \reg, #0x01000000
 	orrmi	cpu_flags, cpu_flags, #ARM_FLAG_N
 	orreq	cpu_flags, cpu_flags, #ARM_FLAG_Z
+.endm
+.macro	OP_SLO; OP_ASL; OP_ORA; .endm
+.macro	OP_RLA; OP_ROL; OP_AND; .endm
+.macro	OP_SRE; OP_LSR; OP_EOR; .endm
+.macro	OP_RRA
+	msr	cpsr_f, cpu_flags
+	movs	r0, r0, rrx
+	orr	r0, r0, lsr #24
+	and	r3, r0, #0xFF
+	subcs	r3, r3, #0x100
+	adcs	cpu_a, cpu_a, r3, ror #8
+	mrs	cpu_flags, cpsr
+.endm
+.macro	OP_DCP; sub r0, r0, #1; OP_CMP; .endm
+.macro	OP_ISC
+	add	r0, r0, #1
+	and	r3, r0, #0xFF
+	msr	cpsr_f, cpu_flags
+	subcc	r3, r3, #0x100
+	sbcs	cpu_a, cpu_a, r3, ror #8
+	mrs	cpu_flags, cpsr
 .endm
 
 #define R(op, arg) R_##arg OP_##op
@@ -613,8 +689,10 @@ insn_00: @ BRK
 	add	cpu_pc, cpu_pc, #1
 	INTERRUPT 0xFFFE, 0x30
 insn_01: R(ORA, Ind_X)
+insn_03: RMW(SLO, Ind_X)
 insn_05: R(ORA, Zp)
 insn_06: RMW(ASL, Zp)
+insn_07: RMW(SLO, Zp)
 insn_08: @ PHP
 	ldrb	r1, [cpu_pc], #1
 	mov	r2, #0x30
@@ -622,16 +700,23 @@ insn_08: @ PHP
 	NEXT	3
 insn_09: R(ORA, Imm)
 insn_0a: RMW(ASLR, A)
+insn_2b: @ANC Imm
+insn_0b: R(ANC, Imm)
 insn_0d: R(ORA, Abs)
 insn_0e: RMW(ASL, Abs)
+insn_0f: RMW(SLO, Abs)
 insn_10: BRANCH N, 0 @ BPL
 insn_11: R(ORA, Ind_Y)
+insn_13: RMW(SLO, Ind_Y)
 insn_15: R(ORA, Zp_X)
 insn_16: RMW(ASL, Zp_X)
+insn_17: RMW(SLO, Zp_X)
 insn_18: CHANGE_FLAG bic, C
 insn_19: R(ORA, Abs_Y)
+insn_1b: RMW(SLO, Abs_Y)
 insn_1d: R(ORA, Abs_X)
 insn_1e: RMW(ASL, Abs_X)
+insn_1f: RMW(SLO, Abs_X)
 insn_20: @ JSR Absolute
 	ldrb	r2, [cpu_pc], #1
 	ldrb	r3, [cpu_pc]
@@ -639,9 +724,11 @@ insn_20: @ JSR Absolute
 	bl	mem_jump_split
 	NEXT	6
 insn_21: R(AND, Ind_X)
+insn_23: RMW(RLA, Ind_X)
 insn_24: R(BIT, Zp)
 insn_25: R(AND, Zp)
 insn_26: RMW(ROL, Zp)
+insn_27: RMW(RLA, Zp)
 insn_28: @ PLP
 	ldrb	r1, [cpu_pc], #1
 	bl	pull_flags
@@ -651,14 +738,19 @@ insn_2a: RMW(ROLR, A)
 insn_2c: R(BIT, Abs)
 insn_2d: R(AND, Abs)
 insn_2e: RMW(ROL, Abs)
+insn_2f: RMW(RLA, Abs)
 insn_30: BRANCH N, 1
 insn_31: R(AND, Ind_Y)
+insn_33: RMW(RLA, Ind_Y)
 insn_35: R(AND, Zp_X)
 insn_36: RMW(ROL, Zp_X)
+insn_37: RMW(RLA, Zp_X)
 insn_38: CHANGE_FLAG orr, C
 insn_39: R(AND, Abs_Y)
+insn_3b: RMW(RLA, Abs_Y)
 insn_3d: R(AND, Abs_X)
 insn_3e: RMW(ROL, Abs_X)
+insn_3f: RMW(RLA, Abs_X)
 insn_40: @ RTI
 	bl	pull_flags
 	SPULL	r2
@@ -666,8 +758,10 @@ insn_40: @ RTI
 	bl	mem_jump_split
 	NEXT	6
 insn_41: R(EOR, Ind_X)
+insn_43: RMW(SRE, Ind_X)
 insn_45: R(EOR, Zp)
 insn_46: RMW(LSR, Zp)
+insn_47: RMW(SRE, Zp)
 insn_48: @ PHA
 	mov	r0, cpu_a, lsr #24
 	ldrb	r1, [cpu_pc], #1
@@ -675,6 +769,7 @@ insn_48: @ PHA
 	NEXT	3
 insn_49: R(EOR, Imm)
 insn_4a: RMW(LSRR, A)
+insn_4b: R(ALR, Imm)
 insn_4c: @ JMP Absolute
 	ldrb	r2, [cpu_pc], #1
 	ldrb	r3, [cpu_pc], #1
@@ -682,14 +777,19 @@ insn_4c: @ JMP Absolute
 	NEXT	3
 insn_4d: R(EOR, Abs)
 insn_4e: RMW(LSR, Abs)
+insn_4f: RMW(SRE, Abs)
 insn_50: BRANCH V, 0
 insn_51: R(EOR, Ind_Y)
+insn_53: RMW(SRE, Ind_Y)
 insn_55: R(EOR, Zp_X)
 insn_56: RMW(LSR, Zp_X)
+insn_57: RMW(SRE, Zp_X)
 insn_58: CHANGE_FLAG bic, I
 insn_59: R(EOR, Abs_Y)
+insn_5b: RMW(SRE, Abs_Y)
 insn_5d: R(EOR, Abs_X)
 insn_5e: RMW(LSR, Abs_X)
+insn_5f: RMW(SRE, Abs_X)
 insn_60: @ RTS
 	SPULL	r2
 	SPULL	r3
@@ -697,8 +797,10 @@ insn_60: @ RTS
 	bl	mem_jump_split
 	NEXT	6
 insn_61: R(ADC, Ind_X)
+insn_63: RMW(RRA, Ind_X)
 insn_65: R(ADC, Zp)
 insn_66: RMW(ROR, Zp)
+insn_67: RMW(RRA, Zp)
 insn_68: @ PLA
 	SPULL	r0
 	ldrb	r1, [cpu_pc], #1
@@ -709,6 +811,7 @@ insn_68: @ PLA
 	NEXT	4
 insn_69: R(ADC, Imm)
 insn_6a: RMW(RORR, A)
+insn_6b: R(ARR, Imm)
 insn_6c: @ JMP Indirect
 	ldrb	r2, [cpu_pc], #1
 	ldrb	r3, [cpu_pc], #1
@@ -723,18 +826,25 @@ insn_6c: @ JMP Indirect
 	NEXT	5
 insn_6d: R(ADC, Abs)
 insn_6e: RMW(ROR, Abs)
+insn_6f: RMW(RRA, Abs)
 insn_70: BRANCH V, 1
 insn_71: R(ADC, Ind_Y)
+insn_73: RMW(RRA, Ind_Y)
 insn_75: R(ADC, Zp_X)
 insn_76: RMW(ROR, Zp_X)
+insn_77: RMW(RRA, Zp_X)
 insn_78: CHANGE_FLAG orr, I
 insn_79: R(ADC, Abs_Y)
+insn_7b: RMW(RRA, Abs_Y)
 insn_7d: R(ADC, Abs_X)
 insn_7e: RMW(ROR, Abs_X)
+insn_7f: RMW(RRA, Abs_X)
 insn_81: W(STA, Ind_X)
+insn_83: W(SAX, Ind_X)
 insn_84: W(STY, Zp)
 insn_85: W(STA, Zp)
 insn_86: W(STX, Zp)
+insn_87: W(SAX, Zp)
 insn_88: RMW(DECR, Y)
 insn_8a: @ TXA
 	ldrb	r1, [cpu_pc], #1
@@ -742,14 +852,17 @@ insn_8a: @ TXA
 	movs	cpu_a, cpu_x
 	mrs	cpu_flags, cpsr
 	NEXT	2
+insn_8b: R(XAA, Imm)
 insn_8c: W(STY, Abs)
 insn_8d: W(STA, Abs)
 insn_8e: W(STX, Abs)
+insn_8f: W(SAX, Abs)
 insn_90: BRANCH C, 0
 insn_91: W(STA, Ind_Y)
 insn_94: W(STY, Zp_X)
 insn_95: W(STA, Zp_X)
 insn_96: W(STX, Zp_Y)
+insn_97: W(SAX, Zp_Y)
 insn_98: @ TYA
 	ldrb	r1, [cpu_pc], #1
 	msr	cpsr_f, cpu_flags
@@ -766,9 +879,11 @@ insn_9d: W(STA, Abs_X)
 insn_a0: R(LDY, Imm)
 insn_a1: R(LDA, Ind_X)
 insn_a2: R(LDX, Imm)
+insn_a3: R(LAX, Ind_X)
 insn_a4: R(LDY, Zp)
 insn_a5: R(LDA, Zp)
 insn_a6: R(LDX, Zp)
+insn_a7: R(LAX, Zp)
 insn_a8: @ TAY
 	ldrb	r1, [cpu_pc], #1
 	msr	cpsr_f, cpu_flags
@@ -782,14 +897,18 @@ insn_aa: @ TAX
 	movs	cpu_x, cpu_a
 	mrs	cpu_flags, cpsr
 	NEXT	2
+insn_ab: R(LAX, Imm)
 insn_ac: R(LDY, Abs)
 insn_ad: R(LDA, Abs)
 insn_ae: R(LDX, Abs)
+insn_af: R(LAX, Abs)
 insn_b0: BRANCH C, 1
 insn_b1: R(LDA, Ind_Y)
+insn_b3: R(LAX, Ind_Y)
 insn_b4: R(LDY, Zp_X)
 insn_b5: R(LDA, Zp_X)
 insn_b6: R(LDX, Zp_Y)
+insn_b7: R(LAX, Zp_Y)
 insn_b8: CHANGE_FLAG bic, V
 insn_b9: R(LDA, Abs_Y)
 insn_ba: @ TSX
@@ -799,49 +918,78 @@ insn_ba: @ TSX
 	movs	cpu_x, r0
 	mrs	cpu_flags, cpsr
 	NEXT	2
+insn_bb: R(LAS, Abs_Y)
 insn_bc: R(LDY, Abs_X)
 insn_bd: R(LDA, Abs_X)
 insn_be: R(LDX, Abs_Y)
+insn_bf: R(LAX, Abs_Y)
 insn_c0: R(CPY, Imm)
 insn_c1: R(CMP, Ind_X)
+insn_c3: RMW(DCP, Ind_X)
 insn_c4: R(CPY, Zp)
 insn_c5: R(CMP, Zp)
 insn_c6: RMW(DEC, Zp)
+insn_c7: RMW(DCP, Zp)
 insn_c8: RMW(INCR, Y)
 insn_c9: R(CMP, Imm)
 insn_ca: RMW(DECR, X)
+insn_cb: R(AXS, Imm)
 insn_cc: R(CPY, Abs)
 insn_cd: R(CMP, Abs)
 insn_ce: RMW(DEC, Abs)
+insn_cf: RMW(DCP, Abs)
 insn_d0: BRANCH Z, 0
 insn_d1: R(CMP, Ind_Y)
+insn_d3: RMW(DCP, Ind_Y)
 insn_d5: R(CMP, Zp_X)
 insn_d6: RMW(DEC, Zp_X)
+insn_d7: RMW(DCP, Zp_X)
 insn_d8: CHANGE_FLAG bic, D
 insn_d9: R(CMP, Abs_Y)
+insn_db: RMW(DCP, Abs_Y)
 insn_dd: R(CMP, Abs_X)
 insn_de: RMW(DEC, Abs_X)
+insn_df: RMW(DCP, Abs_X)
 insn_e0: R(CPX, Imm)
 insn_e1: R(SBC, Ind_X)
+insn_e3: RMW(ISC, Ind_X)
 insn_e4: R(CPX, Zp)
 insn_e5: R(SBC, Zp)
 insn_e6: RMW(INC, Zp)
+insn_e7: RMW(ISC, Zp)
 insn_e8: RMW(INCR, X)
 insn_eb: @ undocumented SBC #Imm
 insn_e9: R(SBC, Imm)
 insn_ec: R(CPX, Abs)
 insn_ed: R(SBC, Abs)
 insn_ee: RMW(INC, Abs)
+insn_ef: RMW(ISC, Abs)
 insn_f0: BRANCH Z, 1
 insn_f1: R(SBC, Ind_Y)
+insn_f3: RMW(ISC, Ind_Y)
 insn_f5: R(SBC, Zp_X)
 insn_f6: RMW(INC, Zp_X)
+insn_f7: RMW(ISC, Zp_X)
 insn_f8: CHANGE_FLAG orr, D
 insn_f9: R(SBC, Abs_Y)
+insn_fb: RMW(ISC, Abs_Y)
 insn_fd: R(SBC, Abs_X)
 insn_fe: RMW(INC, Abs_X)
+insn_ff: RMW(ISC, Abs_X)
 
 @ No-ops
+insn_1c: @ NOP Abs_X
+insn_3c: @ NOP Abs_X
+insn_5c: @ NOP Abs_X
+insn_7c: @ NOP Abs_X
+insn_dc: @ NOP Abs_X
+insn_fc: @ NOP Abs_X
+	ldrb	r2, [cpu_pc]
+	add	r2, r2, cpu_x, lsr #24
+	tst	r2, #0x100
+	subne	cpu_cycles, cpu_cycles, #CPU_CYCLE_LENGTH
+insn_0c: @ NOP Abs
+	add	cpu_pc, cpu_pc, #1
 insn_14: @ NOP Zp,X
 insn_34: @ NOP Zp,X
 insn_54: @ NOP Zp,X
@@ -869,79 +1017,19 @@ insn_fa: @ NOP
 	ldrb	r1, [cpu_pc], #1
 	NEXT	2
 
-@ Opcodes with undocumented functionality (not implemented)
-insn_03:
-insn_07:
-insn_0b:
-insn_0c:
-insn_0f:
-insn_13:
-insn_17:
-insn_1b:
-insn_1c:
-insn_1f:
-insn_23:
-insn_27:
-insn_2b:
-insn_2f:
-insn_33:
-insn_37:
-insn_3b:
-insn_3c:
-insn_3f:
-insn_43:
-insn_47:
-insn_4b:
-insn_4f:
-insn_53:
-insn_57:
-insn_5b:
-insn_5c:
-insn_5f:
-insn_63:
-insn_67:
-insn_6b:
-insn_6f:
-insn_73:
-insn_77:
-insn_7b:
-insn_7c:
-insn_7f:
-insn_83:
-insn_87:
-insn_8b:
-insn_8f:
-insn_93:
-insn_97:
-insn_9b:
-insn_9c:
-insn_9e:
-insn_9f:
-insn_a3:
-insn_a7:
-insn_ab:
-insn_af:
-insn_b3:
-insn_b7:
-insn_bb:
-insn_bf:
-insn_c3:
-insn_c7:
-insn_cb:
-insn_cf:
-insn_d3:
-insn_d7:
-insn_db:
-insn_dc:
-insn_df:
-insn_e3:
-insn_e7:
-insn_ef:
-insn_f3:
-insn_f7:
-insn_fb:
-insn_fc:
-insn_ff:
+@ undocumented Opcodes with unstable functionality (not implemented)
+insn_93: @ AHX Ind_Y
+	add	cpu_pc, cpu_pc, #1
+	ldrb	r1, [cpu_pc], #1
+	NEXT	6
+insn_9b: @ TAS Abs_Y
+insn_9c: @ SHY Abs_X
+insn_9e: @ SHX Abs_Y
+insn_9f: @ AHX Abs_Y
+	add	cpu_pc, cpu_pc, #2
+	ldrb	r1, [cpu_pc], #1
+	NEXT	5
+
 @ Opcodes that hang the CPU
 insn_02:
 insn_12:
