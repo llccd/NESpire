@@ -2,14 +2,15 @@
 
 	.string	"PRG"
 
-.globl _start
-_start:
+.globl main
+main:
 	push	{r4-r11, lr}
 	@ Allocate the state data structure from the stack and zero it out
 	mov	r5, sp
 	sub	sp, sp, #s_SIZE
 	bic	sp, sp, #s_ALIGN - 1
 	mov	r9, sp
+	sub	sp, sp, #s_SIZE // Reserve space for state
 	mov	r4, #0
 	mov	r6, #s_SIZE
 1:	subs	r6, r6, #4
@@ -200,12 +201,14 @@ pause_loop:
 	tst	r5, #1 << 3;	movne	r10, #4
 	tst	r5, #1 << 4;	movne	r10, #5
 	tst	r5, #1 << 5;	movne	r10, #6
-	tst	r5, #1 << 6;	blne	toggle_border   @ B (Border)
-	tst	r5, #1 << 7;	mvnne	r8, r8          @ P (Pause)
-	tst	r5, #1 << 8;	bne	exit_emulator   @ Q (Quit)
-	tst	r5, #1 << 9;	blne	invert_colors   @ R (Reverse)
-	tst	r5, #1 << 10;	blne	sram_save       @ S (Save SRAM)
-	tst	r4, #1 << 11;	bne	fast_forward    @ *
+	tst	r5, #1 << 6;	blne	save_state
+	tst	r5, #1 << 7;	blne	load_state
+	tst	r5, #1 << 8;	blne	toggle_border   @ B (Border)
+	tst	r5, #1 << 9;	mvnne	r8, r8          @ P (Pause)
+	tst	r5, #1 << 10;	bne	exit_emulator   @ Q (Quit)
+	tst	r5, #1 << 11;	blne	invert_colors   @ R (Reverse)
+	tst	r5, #1 << 12;	blne	sram_save       @ S (Save SRAM)
+	tst	r4, #1 << 13;	bne	fast_forward    @ *
 
 	@ Keep looping until the frame timer reaches 5/300 (1/60) of a second
 	ldrb	r0, [r9, #s_frame_timer]
@@ -273,11 +276,11 @@ touchpad_info_page:
 touchpad_main_page:
 	.byte	0x04
 
-	@       1    2    3    4    5    6    B    P    Q    R    S    *
+	@       1    2    3    4    5    6    7    9    B    P    Q    R    S    *
 clickpad_command_map:
-	.byte	0x17,0x15,0x13,0x27,0x25,0x23,0x64,0x28,0x26,0x24,0x22,0x31
+	.byte	0x17,0x15,0x13,0x27,0x25,0x23,0x37,0x33,0x64,0x28,0x26,0x24,0x22,0x31
 touchpad_command_map:
-	.byte	0x17,0x64,0x13,0x27,0x56,0x23,0x45,0x22,0x21,0x20,0x16,0x48
+	.byte	0x17,0x64,0x13,0x27,0x56,0x23,0x37,0x33,0x45,0x22,0x21,0x20,0x16,0x48
 
 	.align	4
 
@@ -349,4 +352,59 @@ touchpad_read_input:
 	mov	r0, r4
 	pop	{r4, pc}
 
+save_state:
+	str lr, saved_state_cpu_status+56
+	adr lr, saved_state_cpu_status
+	stm lr, {r0-r13}
+	mrs r0, cpsr
+	str r0, saved_state_cpu_cpsr
+	
+	mov r1, #s_SIZE
+	sub r2, r9, #s_SIZE
+	mov r3, r9
+	sstate_loop:
+	ldr r0, [r3]
+	str r0, [r2]
+	add r3, r3, #4
+	add r2, r2, #4
+	sub r1, r1, #4
+	cmp r1, #0
+	bne sstate_loop
+	
+	mov r0, #1
+	str r0, save_state_exists
+	
+	ldr lr, saved_state_cpu_status+56 // subroutine return
+
+load_state:
+	ldr r0, save_state_exists
+	cmp r0, #0
+	moveq pc,lr
+
+	mov r1, #s_SIZE
+	sub r3, r9, #s_SIZE
+	mov r2, r9
+	lstate_loop:
+	ldr r0, [r3]
+	str r0, [r2]
+	add r3, r3, #4
+	add r2, r2, #4
+	sub r1, r1, #4
+	cmp r1, #0
+	bne lstate_loop
+	
+	ldr r0, saved_state_cpu_cpsr
+	msr cpsr_all, r0
+	adr lr, saved_state_cpu_status
+	ldm lr, {r0-r13,pc} // returns to previous instruction after save_state
+
+save_state_exists: .word 0
+
+saved_state_cpu_status:
+	.rept 15
+	.word 0
+	.endr
+saved_state_cpu_cpsr:
+	.word 0
+	
 	.pool
