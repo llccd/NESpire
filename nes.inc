@@ -35,6 +35,7 @@
 #define e_strcpy 27
 #define e_touchpad_read 75
 #define e_touchpad_write 76
+#define e_keypad_type (0x800000|59)
 
 // Global data structure: r9 points to this at all times
 // Note some requirements:
