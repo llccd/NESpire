@@ -1,16 +1,21 @@
-CC = arm-none-eabi-gcc
-LD = arm-none-eabi-ld
-OBJCOPY = arm-none-eabi-objcopy
+AS = nspire-as
+LD = $(shell nspire-tools _toolchainpath)/arm-none-eabi-ld
+GENZEHN = genzehn
 
-nespire.tns : nespire.elf
-	$(OBJCOPY) -O binary $< $@
+OBJS = $(patsubst %.S, %.o, $(shell find . -name \*.S))
+EXE = nespire
 
-nespire.elf : main.o cpu.o debug.o memory.o ppu.o rom.o menu.o
-	$(LD) -e main main.o cpu.o debug.o memory.o ppu.o rom.o menu.o -o $@
+all: $(EXE).tns
 
-%.o : %.s
-	$(CC) -mcpu=arm926ej-s -c $< -o $@
+$(EXE).tns: $(EXE).elf
+	$(GENZEHN) --input $^ --output $@ --compress
 
-.PHONY : clean
-clean :
-	-rm -f *.o *.elf nespire.tns
+$(EXE).elf: $(OBJS)
+	$(LD) --pic-veneer --emit-relocs -T $(shell nspire-tools path)/system/ldscript -e main $^ -o $@
+
+%.o: %.S
+	$(AS) -c $<
+
+.PHONY: clean
+clean:
+	-rm -f *.o $(EXE).elf $(EXE).tns
