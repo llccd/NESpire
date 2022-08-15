@@ -43,10 +43,10 @@ map_prg_8kB:
 
 
 map_chr_8kB:
-	ldr	r2, [r9, #s_chr_size]
-	ldr	r3, [r9, #s_chr_ptr]
-	and	r0, r2, r0, lsl #13
-	add	r0, r0, r3
+	ldr	r1, [r9, #s_chr_size]
+	ldr	r2, [r9, #s_chr_ptr]
+	and	r0, r1, r0, lsl #13
+	add	r0, r0, r2
 	str	r0, [r9, #s_ppu_mem_map + 0x00]    @ 0000
 	str	r0, [r9, #s_ppu_mem_map + 0x04]    @ 0400
 	str	r0, [r9, #s_ppu_mem_map + 0x08]    @ 0800
@@ -231,19 +231,9 @@ load_rom:
 	@ SRAM
 	add	r1, r9, #s_sram - 0x6000
 	str	r1, [r9, #s_mem_map + 12]    @ 6000
-	@ ROM low
-	mov	r0, #0
-	bl	map_prg_16kB_to_8000
-	@ ROM high
-	mov	r0, #-1
-	bl	map_prg_16kB_to_C000
 	@ RAM wraparound
 	sub	r1, r9, #0x10000
 	str	r1, [r9, #s_mem_map + 32]    @ 10000
-
-	@ Initialize PPU memory map
-	mov	r0, #0
-	bl	map_chr_8kB
 
 	@ Name table
 	ldrb	r6, [r9, #s_rom_header + 6]
@@ -270,6 +260,7 @@ load_rom:
 1:	cmp	r2, r1
 	moveq	r5, #error_bad_mapper - error_messages
 	beq	error
+	ldrh	r6, [r2, #-2]!
 	ldrh	r5, [r2, #-2]!
 	ldrh	r4, [r2, #-2]!
 	cmp	r0, r4
@@ -277,7 +268,9 @@ load_rom:
 	add	r0, r1, r5
 	str	r0, [r9, #s_mapper]
 
-	mov	r0, #0
+	adr	lr, 1f
+	add	pc, r1, r6
+1:	mov	r0, #0
 	pop	{r4-r11, pc}
 	.pool
 
@@ -308,21 +301,60 @@ error_messages = .+8
 	pop	{r4-r11, pc}
 
 mapper_table:
-.macro MAPPER n, addr; .hword \n, \addr - mapper_table; .endm
-	MAPPER   0, mapper_NROM
-	MAPPER   1, mapper_MMC1
-	MAPPER   2, mapper_UxROM
-	MAPPER   3, mapper_CNROM
-	MAPPER   4, mapper_MMC3
-	MAPPER   7, mapper_AxROM
-	MAPPER  11, mapper_Color_Dreams
-	MAPPER  34, mapper_BxROM
-	MAPPER  66, mapper_GxROM
-	MAPPER 228, mapper_Action_Enterprises
+.macro MAPPER n, addr, reset; .hword \n, \addr - mapper_table, \reset - mapper_table; .endm
+	MAPPER   0, mapper_NROM, mapper_init_general
+	MAPPER   1, mapper_MMC1, mapper_init_general
+	MAPPER   2, mapper_UxROM, mapper_init_general
+	MAPPER   3, mapper_CNROM, mapper_init_general
+	MAPPER   4, mapper_MMC3, mapper_init_general
+	MAPPER   7, mapper_AxROM, mapper_init_prg32k
+	MAPPER   8, mapper_8, mapper_init_prg32k
+	MAPPER  11, mapper_Color_Dreams, mapper_init_prg32k
+	MAPPER  13, mapper_CPROM, mapper_init_general
+	MAPPER  34, mapper_BxROM, mapper_init_prg32k
+	MAPPER  39, mapper_BxROM, mapper_init_prg32k	@ same as 241
+	MAPPER  66, mapper_GxROM, mapper_init_prg32k
+	MAPPER  70, mapper_70, mapper_init_general
+	MAPPER  76, mapper_76, mapper_init_general
+	MAPPER  78, mapper_78, mapper_init_general
+	MAPPER  81, mapper_81, mapper_init_general
+	MAPPER  94, mapper_94, mapper_init_general
+	MAPPER 107, mapper_107, mapper_init_prg32k
+	MAPPER 144, mapper_144, mapper_init_prg32k
+	MAPPER 148, mapper_148, mapper_init_prg32k
+	MAPPER 149, mapper_149, mapper_init_general
+	MAPPER 152, mapper_152, mapper_init_general
+	MAPPER 155, mapper_MMC1, mapper_init_general
+	MAPPER 177, mapper_177, mapper_init_prg32k
+	MAPPER 180, mapper_180, mapper_init_general
+	MAPPER 206, mapper_206, mapper_init_general
+	MAPPER 228, mapper_Action_Enterprises, mapper_init_general
+	MAPPER 241, mapper_BxROM, mapper_init_prg32k
 mapper_table_end:
 
-mapper_NROM:
-	bx	lr
+mapper_init_general:
+	push	{lr}
+	@ ROM low
+	mov	r0, #0
+	bl	map_prg_16kB_to_8000
+	@ ROM high
+	mov	r0, #-1
+	bl	map_prg_16kB_to_C000
+	@ Initialize PPU memory map
+	mov	r0, #0
+	pop	{lr}
+mapper_CNROM:
+	b	map_chr_8kB
+
+mapper_init_prg32k:
+	push	{lr}
+	@ ROM
+	mov	r0, #0
+	bl	map_prg_32kB
+	@ Initialize PPU memory map
+	mov	r0, #0
+	pop	{lr}
+	b	map_chr_8kB
 
 #define s_mmc1_shift_reg   (s_mapper_state)
 #define s_mmc1_control     (s_mapper_state+4)
@@ -331,9 +363,9 @@ mapper_NROM:
 #define s_mmc1_prg         (s_mapper_state+7)
 mapper_MMC1:
 	push	{lr}
-	ldrb	r3, [r9, #s_mmc1_shift_reg]
 	tst	r0, #0x80
 	bne	mmc1_reset
+	ldrb	r3, [r9, #s_mmc1_shift_reg]
 	and	r0, r0, #1
 	movs	r3, r3, lsr #1
 	orr	r0, r3, r0, lsl #4
@@ -382,8 +414,8 @@ mmc1_update:
 	tst	r3, #0x08
 	bne	1f
 	mov	r0, r0, lsr #1
-	bl	map_prg_32kB
-	pop	{pc}
+	pop	{lr}
+	b	map_prg_32kB
 1:
 
 	@ Mode 2
@@ -396,13 +428,15 @@ mmc1_update:
 	@ Mode 3
 1:	bl	map_prg_16kB_to_8000
 	mov	r0, #-1
-	bl	map_prg_16kB_to_C000
-	pop	{pc}
+	pop {lr}
+mapper_180:
+	b	map_prg_16kB_to_C000
 
-mapper_UxROM:
-	b	map_prg_16kB_to_8000
+mapper_CPROM:
+	b	map_chr_4kB_to_1000
 
-mapper_CNROM:
+mapper_149:
+	mov	r0, r0, lsr #7
 	b	map_chr_8kB
 
 #define s_mmc3_bank              (s_mapper_state)
@@ -420,6 +454,7 @@ mapper_MMC3:
 	b	mmc3_bank_select
 	b	mmc3_bank_data
 	b	mmc3_mirroring
+mapper_NROM:
 	bx	lr
 	b	mmc3_irq_latch
 	b	mmc3_irq_reload
@@ -497,34 +532,131 @@ mmc3_update:
 
 	pop	{r4, r5, pc}
 
+mapper_206:
+	cmp	r2, #0xA000
+	bxcs	lr
+	tst	r2, #1
+	bne	mmc3_bank_data
+	and	r0, r0, #0x7
+	strb	r0, [r9, #s_mmc3_bank_select]
+	bx	lr
+
+mapper_76:
+	cmp	r2, #0xA000
+	bxcs	lr
+	tst	r2, #1
+	bne	mmc3_bank_data
+	and	r0, r0, #0x7
+	strb	r0, [r9, #s_mmc3_bank_select]
+	bx	lr
+m76_bank_data:
+	ldrb	r1, [r9, #s_mmc3_bank_select]
+	and	r3, r1, #7
+	add	r3, r3, r9
+	strb	r0, [r3, #s_mmc3_bank]
+	push	{lr}
+	ldrb	r0, [r9, #s_mmc3_bank+2]; mov	r1, #0x0000; bl	map_chr_2kB
+	ldrb	r0, [r9, #s_mmc3_bank+3]; mov	r1, #0x0800; bl	map_chr_2kB
+	ldrb	r0, [r9, #s_mmc3_bank+4]; mov	r1, #0x1000; bl	map_chr_2kB
+	ldrb	r0, [r9, #s_mmc3_bank+5]; mov	r1, #0x1800; bl	map_chr_2kB
+	ldrb	r0, [r9, #s_mmc3_bank+6]; mov	r1, #0x8000; bl	map_prg_8kB
+	ldrb	r0, [r9, #s_mmc3_bank+7]; mov	r1, #0xA000; bl	map_prg_8kB
+	pop	{pc}
+
 mapper_AxROM:
-	push	{r4, lr}
-	mov	r4, r0
-	tst	r4, #0x10
+	push	{lr}
+	mov	r3, r0
+	tst	r3, #0x10
 	bleq	mirror_1screen_lo
 	blne	mirror_1screen_hi
-	mov	r0, r4
-	pop	{r4, lr}
-	b	map_prg_32kB
-
-mapper_Color_Dreams:
-	push	{r4, lr}
-	mov	r4, r0
-	bl	map_prg_32kB
-	mov	r0, r4, lsr #4
-	pop	{r4, lr}
-	b	map_chr_8kB
-
+	mov	r0, r3
+	pop	{lr}
 mapper_BxROM:
 	b	map_prg_32kB
 
-mapper_GxROM:
-	push	{r4, lr}
-	mov	r4, r0
-	bl	map_chr_8kB
-	mov	r0, r4, lsr #4
-	pop	{r4, lr}
+mapper_144:
+	cmp	r2, #0x8000
+	bxeq	lr
+mapper_Color_Dreams:
+	push	{lr}
+	mov	r3, r0
+	bl	map_prg_32kB
+	mov	r0, r3, lsr #4
+	pop	{lr}
+	b	map_chr_8kB
+
+mapper_177:
+	push	{lr}
+	mov	r3, r0
+	tst	r3, #0x20
+	bleq	mirror_vert
+	blne	mirror_horiz
+	mov	r0, r3
+	pop	{lr}
 	b	map_prg_32kB
+
+mapper_GxROM:
+	push	{lr}
+	mov	r3, r0
+	bl	map_chr_8kB
+	mov	r0, r3, lsr #4
+	pop	{lr}
+	b	map_prg_32kB
+
+mapper_107:
+	push	{lr}
+	mov	r3, r0
+	bl	map_chr_8kB
+	mov	r0, r3, lsr #1
+	pop	{lr}
+	b	map_prg_32kB
+
+mapper_8:
+	push	{lr}
+	mov	r3, r0
+	bl	map_chr_8kB
+	mov	r0, r3, lsr #3
+	pop	{lr}
+mapper_UxROM:
+	b	map_prg_16kB_to_8000
+
+mapper_148:
+	push	{lr}
+	mov	r3, r0
+	bl	map_chr_8kB
+	mov	r0, r3, lsr #3
+	pop	{lr}
+	b	map_prg_32kB
+
+mapper_70:
+	push	{lr}
+	mov	r3, r0
+	bl	map_chr_8kB
+	mov	r0, r3, lsr #4
+	pop	{lr}
+	b	map_prg_16kB_to_8000
+
+mapper_152:
+	push	{lr}
+	mov	r3, r0
+	bl	map_chr_8kB
+	tst	r3, #0x80
+	bleq	mirror_1screen_lo
+	blne	mirror_1screen_hi
+	mov	r0, r3, lsr #4
+	pop	{lr}
+	b	map_prg_16kB_to_8000
+
+mapper_78:
+	push	{lr}
+	mov	r3, r0
+	bl	map_prg_16kB_to_8000
+	tst	r3, #0x08
+	bleq	mirror_1screen_lo
+	blne	mirror_1screen_hi
+	mov	r0, r3, lsr #4
+	pop	{lr}
+	b	map_chr_8kB
 
 mapper_Action_Enterprises:
 	push	{r4, lr}
@@ -541,8 +673,19 @@ mapper_Action_Enterprises:
 	andhi	r0, r0, r1
 	add	r0, r0, r2
 	bl	map_prg_32kB_from_pointer
-	bl	mirror_vert
-	pop	{r4, pc}
+	tst	r4, #0x20
+	pop	{r4, lr}
+	beq	mirror_vert
+	bne	mirror_horiz
+
+mapper_81:
+	push	{r2, lr}
+	and	r0, r2, #0xf
+	bl	map_chr_8kB
+	pop	{r0, lr}
+mapper_94:
+	mov	r0, r0, lsr #2
+	b	map_prg_16kB_to_8000
 
 .globl sram_load
 sram_load:

@@ -1,7 +1,5 @@
 #include "nes.inc"
 
-	.string	"PRG"
-
 .globl main
 main:
 	push	{r4-r11, lr}
@@ -10,7 +8,7 @@ main:
 	sub	sp, sp, #s_SIZE
 	bic	sp, sp, #s_ALIGN - 1
 	mov	r9, sp
-	sub	sp, sp, #s_SIZE // Reserve space for state
+	sub	sp, sp, #s_path // Reserve space for state
 	mov	r4, #0
 	mov	r6, #s_SIZE
 1:	subs	r6, r6, #4
@@ -356,8 +354,8 @@ save_state:
 	mrs r0, cpsr
 	str r0, saved_state_cpu_cpsr
 	
-	mov r1, #s_SIZE
-	sub r2, r9, #s_SIZE
+	mov r1, #s_path
+	sub r2, r9, #s_path
 	mov r3, r9
 	sstate_loop:
 	ldr r0, [r3]
@@ -378,8 +376,8 @@ load_state:
 	cmp r0, #0
 	moveq pc,lr
 
-	mov r1, #s_SIZE
-	sub r3, r9, #s_SIZE
+	mov r1, #s_path
+	sub r3, r9, #s_path
 	mov r2, r9
 	lstate_loop:
 	ldr r0, [r3]

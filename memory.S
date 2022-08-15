@@ -33,10 +33,11 @@ mem_read_ram:
 	add	r3, pc, r3, lsl #2
 	add	pc, r3, #ppu_read_table - (. + 4)
 	nop
-@ 4000-5FFF: 2A03 registers
+@ 4000-401F: 2A03 registers
+@ 4020-5FFF: Expansion ROM
 	sub	r3, r2, #0x4000
-	cmp	r3, #0x16
-	beq	mem_read_4016
+	cmp r3, #0x20
+	bcc	mem_read_4000_to_401f
 	b	mem_read_bad
 @ 6000-7FFF: SRAM
 	add	r3, r9, #s_sram - 0x6000
@@ -123,6 +124,10 @@ mem_read_2002:
 	strb	r3, [r9, #s_ppu_status]
 	bx	lr
 
+mem_read_4000_to_401f:
+	cmp	r3, #0x16
+	beq	mem_read_4016
+	b	mem_read_bad
 mem_read_4016:
 	ldr	r3, [r9, #s_input_queue]
 	and	r0, r3, #1
@@ -162,11 +167,12 @@ mem_write_ram:
 	add	r3, pc, r3, lsl #2
 	add	pc, r3, #ppu_write_table - (. + 4)
 	nop
-@ 4000-5FFF: APU registers
+@ 4000-401F: 2A03 registers
+@ 4020-5FFF: Mapper registers
 	sub	r3, r2, #0x4000
-	b	mem_write_4000_to_4017
-	nop
-	nop
+	cmp r3, #0x20
+	bcc	mem_write_4000_to_401f
+	bx	lr
 @ 6000-7FFF: SRAM
 	add	r3, r9, #s_sram - 0x6000
 	strb	r0, [r3, r2]
@@ -301,7 +307,7 @@ mem_write_2000:
 	@ TODO: Generate NMI if 2002.b7 set and 2000.b7 changed from 0 to 1
 	bx	lr
 
-mem_write_4000_to_4017:
+mem_write_4000_to_401f:
 	cmp	r3, #0x14
 	beq	mem_write_4014
 	cmp	r3, #0x16
