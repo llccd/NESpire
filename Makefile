@@ -13,7 +13,7 @@ $(EXE).tns: $(EXE).elf
 $(EXE).elf: $(OBJS)
 	$(LD) --pic-veneer --emit-relocs -T $(shell nspire-tools path)/system/ldscript -e main $^ -o $@
 
-%.o: %.S
+%.o: %.S nes.inc
 	$(AS) -c $<
 
 .PHONY: clean

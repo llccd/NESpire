@@ -1,9 +1,7 @@
 //#define DEBUG
 
-//#define TRACE bl trace
-#define TRACE
-
 #ifdef DEBUG
+#define TRACE bl trace
 .macro	ERROR	code
 	bkpt	#\code
 .endm
@@ -13,6 +11,7 @@
 	bkpt	#\code
 .endm
 #else
+#define TRACE
 .macro	ERROR	code
 	b	exit_emulator
 .endm

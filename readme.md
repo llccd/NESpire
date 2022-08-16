@@ -15,7 +15,7 @@ First, you must have Ndless installed to use NESpire.
 Any NES ROM you wish to play must be named with a .nes.tns extension, and
 sent to the calculator in the same folder NESpire was sent to. Open NESpire
 from the documents menu, and you will be presented with the ROM selection
-menu. Choose a ROM using the arrow keys and press Shift to select one,
+menu. Choose a ROM using the arrow keys and press Menu to select one,
 or press Esc to exit.
 
 ## Controls
@@ -26,10 +26,19 @@ Game controls:
 - `Esc`   = A
 - `Clear` = Select
 - `Shift` = Start
+- `^`     = 2P B (`x^2` on clickpad)
+- `=`     = 2P A (`10^x` on clickpad)
+- `Var`   = 2P Select
+- `Ctrl`  = 2P Start
+- `8`     = 2P Up
+- `5`     = 2P Down
+- `4`     = 2P Left
+- `6`     = 2P Right
+- `Menu`  = 2P Microphone
 
 Emulator controls:
 
-- `1`-`6` = Set frameskip (Default is 3 on the original TI-Nspire, 1 on the CX)
+- `+`/`-` = Increase/decrease frameskip (Default is 3 on the original TI-Nspire, 1 on the CX)
 - `7`   = Save state
 - `9`   = Load state
 - `*`   = Fast-forward

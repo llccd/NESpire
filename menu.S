@@ -3,7 +3,7 @@
 nes_rom_file_mask:
 	.string	"*.nes.tns"
 title:
-	.string	" NESpire v0.30 -- Shift=start, Esc=quit"
+	.string	" NESpire v0.30 -- Menu=start, Esc=quit"
 	.align	4
 
 .globl rom_menu
@@ -116,7 +116,7 @@ menu_waitkey:
 	bne	menu_up
 	tst	r0, #0x20
 	bne	menu_down
-	tst	r0, #0x08
+	tst	r0, #0x100
 	bne	menu_start
 	b	menu_waitkey
 

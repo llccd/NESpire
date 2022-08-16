@@ -127,12 +127,24 @@ mem_read_2002:
 mem_read_4000_to_401f:
 	cmp	r3, #0x16
 	beq	mem_read_4016
+	cmp	r3, #0x17
+	beq	mem_read_4017
 	b	mem_read_bad
 mem_read_4016:
 	ldr	r3, [r9, #s_input_queue]
 	and	r0, r3, #1
-	mov	r3, r3, asr #1
-	str	r3, [r9, #s_input_queue]
+	mov	r3, r3, lsr #1
+	tst r3, #0x80
+	orreq r3, r3, #0x80
+	orrne r0, r0, #4
+	strb	r3, [r9, #s_input_queue]
+	bx	lr
+mem_read_4017:
+	ldrb	r3, [r9, #s_input_queue + 2]
+	and	r0, r3, #1
+	mov	r3, r3, lsr #1
+	orr r3, r3, #0x80
+	strb	r3, [r9, #s_input_queue + 2]
 	bx	lr
 
 @ Input:
@@ -297,14 +309,23 @@ mem_write_2001:
 	bx	lr
 @ Reg 2000: PPU Control
 mem_write_2000:
-	@ TODO: if sprites changed 8x8 <-> 8x16, invalidate table
+	ldrb	r2, [r9, #s_ppu_control]
+	eor	r2, r2, r0
+	tst	r2, #0x20
+	movne	r3, #0
+	strneb	r3, [r9, #s_spr_loc_table_valid]
+	and r2, r2, r0
 	ldr	r3, [r9, #s_ppu_scroll]
 	strb	r0, [r9, #s_ppu_control]
 	bic	r3, #0x0C00
 	and	r0, r0, #0x03
 	orr	r3, r3, r0, lsl #10
 	str	r3, [r9, #s_ppu_scroll]
-	@ TODO: Generate NMI if 2002.b7 set and 2000.b7 changed from 0 to 1
+	tst	r2, #0x80
+	bxeq	lr
+	ldrb	r2, [r9, #s_ppu_status]
+	and	r2, r2, #0x80   @ NMI enabled?
+	strb	r2, [r9, #s_nmi_reset]
 	bx	lr
 
 mem_write_4000_to_401f:

@@ -177,7 +177,7 @@ newframe:
 	mov	r8, #0
 pause_loop:
 
-#define num_command_keys 12
+#define num_command_keys 10
 	@ Scan keypad
 	ldr	r3, [r9, #s_hw_keypad_invert]
 	mov	r4, #0
@@ -197,20 +197,16 @@ pause_loop:
 	str	r4, [r9, #s_command_keys_pressed]
 	bic	r5, r4, r5
 
-	tst	r5, #1 << 0;	movne	r10, #1
-	tst	r5, #1 << 1;	movne	r10, #2
-	tst	r5, #1 << 2;	movne	r10, #3
-	tst	r5, #1 << 3;	movne	r10, #4
-	tst	r5, #1 << 4;	movne	r10, #5
-	tst	r5, #1 << 5;	movne	r10, #6
-	tst	r5, #1 << 6;	blne	save_state
-	tst	r5, #1 << 7;	blne	load_state
-	tst	r5, #1 << 8;	blne	toggle_border   @ B (Border)
-	tst	r5, #1 << 9;	mvnne	r8, r8          @ P (Pause)
-	tst	r5, #1 << 10;	bne	exit_emulator   @ Q (Quit)
-	tst	r5, #1 << 11;	blne	invert_colors   @ R (Reverse)
-	tst	r5, #1 << 12;	blne	sram_save       @ S (Save SRAM)
-	tst	r4, #1 << 13;	bne	fast_forward    @ *
+	tst	r5, #1 << 0;	blne	frameskip_inc
+	tst	r5, #1 << 1;	blne	frameskip_dec
+	tst	r5, #1 << 2;	blne	save_state
+	tst	r5, #1 << 3;	blne	load_state
+	tst	r5, #1 << 4;	blne	toggle_border   @ B (Border)
+	tst	r5, #1 << 5;	mvnne	r8, r8          @ P (Pause)
+	tst	r4, #1 << 6;	bne	exit_emulator   @ Q (Quit)
+	tst	r5, #1 << 7;	blne	invert_colors   @ R (Reverse)
+	tst	r5, #1 << 8;	blne	sram_save       @ S (Save SRAM)
+	tst	r4, #1 << 9;	bne	fast_forward    @ *
 
 	@ Keep looping until the frame timer reaches 5/300 (1/60) of a second
 	ldrb	r0, [r9, #s_frame_timer]
@@ -225,8 +221,6 @@ pause_loop:
 	movs	r8, r8
 	bne	pause_loop
 fast_forward:
-	str	r10, [r9, #s_frameskip]
-
 	mov	lr, pc
 	ldr	pc, [r9, #s_keypad_read_input]
 	str	r0, [r9, #s_input_status]
@@ -271,19 +265,28 @@ touchpad_info_page:
 touchpad_main_page:
 	.byte	0x04
 
-	@       1    2    3    4    5    6    7    9    B    P    Q    R    S    *
+	@       +    -    7    9    B    P    Q    R    S    *
 clickpad_command_map:
-	.byte	0x17,0x15,0x13,0x27,0x25,0x23,0x37,0x33,0x64,0x28,0x26,0x24,0x22,0x31
+	.byte	0x11,0x21,0x37,0x33,0x64,0x28,0x26,0x24,0x22,0x31
 touchpad_command_map:
-	.byte	0x17,0x64,0x13,0x27,0x56,0x23,0x37,0x33,0x45,0x22,0x21,0x20,0x16,0x48
+	.byte	0x62,0x52,0x37,0x33,0x45,0x22,0x21,0x20,0x16,0x48
 
 	.align	4
 
 clickpad_read_input:
-	mvn	r2, #0xFF
+	mov	r2, #0
 	ldr	r0, =0x900E0000
-	ldrd	r0, [r0, #0x18]
 	ldr	r3, [r9, #s_hw_keypad_invert]
+	ldr	r1, [r0, #0x14]
+	eor	r1, r3
+	tst	r1, #1 << 25;	orrne	r2, r2, #0x10000	@ x^2 (2P A)
+	tst	r1, #1 << 9;	orrne	r2, r2, #0x20000	@ 10^x (2P B)
+	tst	r1, #1 << 21;	orrne	r2, r2, #0x100000	@ 8 (2P Up)
+	tst	r1, #1 << 5;	orrne	r2, r2, #0x200000	@ 5 (2P Down)
+	tst	r1, #1 << 7;	orrne	r2, r2, #0x400000	@ 4 (2P Left)
+	tst	r1, #1 << 3;	orrne	r2, r2, #0x800000	@ 6 (2P Right)
+
+	ldrd	r0, [r0, #0x18]
 	eor	r0, r3
 	eor	r1, r3
 	tst	r0, #1 << 25;	orrne	r2, r2, #0x08	@ Caps (Start)
@@ -294,22 +297,38 @@ clickpad_read_input:
 	tst	r1, #1 << 20;	orrne	r2, r2, #0x20	@ Down
 	tst	r1, #1 << 22;	orrne	r2, r2, #0x40	@ Left
 	tst	r1, #1 << 24;	orrne	r2, r2, #0x04	@ Clear (Select)
+	tst	r0, #1 << 23;	orrne	r2, r2, #0x40000	@ Var (2P Select)
+	tst	r1, #1 << 25;	orrne	r2, r2, #0x80000	@ Ctrl (2P Start)
+	tst	r1, #1 << 5;	orrne	r2, r2, #0x100	@ Menu (2P Microphone)
+
 	mov	r0, r2
 	bx	lr
 
 touchpad_read_input:
 	push	{r4, lr}
-	mvn	r4, #0xFF
+	mov	r4, #0
 
 	ldr	r0, =0x900E0000
-	ldrd	r0, [r0, #0x18]
 	ldr	r2, [r9, #s_hw_keypad_invert]
+	ldr	r1, [r0, #0x14]
+	eor	r1, r2
+	tst	r1, #1 << 7;	orrne	r4, r4, #0x400000	@ 4 (2P Left)
+	tst	r1, #1 << 3;	orrne	r4, r4, #0x800000	@ 6 (2P Right)
+
+	ldrd	r0, [r0, #0x18]
 	eor	r0, r2
 	eor	r1, r2
 	tst	r1, #1 << 7;	orrne	r4, r4, #0x01	@ Esc (A)
 	tst	r1, #1 << 9;	orrne	r4, r4, #0x02	@ Tab (B)
 	tst	r0, #1 << 25;	orrne	r4, r4, #0x04	@ Clear (Select)
 	tst	r1, #1 << 24;	orrne	r4, r4, #0x08	@ Caps (Start)
+	tst	r0, #1 << 7;	orrne	r4, r4, #0x10000	@ = (2P A)
+	tst	r0, #1 << 9;	orrne	r4, r4, #0x20000	@ ^ (2P B)
+	tst	r0, #1 << 17;	orrne	r4, r4, #0x40000	@ Var (2P Select)
+	tst	r1, #1 << 25;	orrne	r4, r4, #0x80000	@ Ctrl (2P Start)
+	tst	r1, #1 << 6;	orrne	r4, r4, #0x100000	@ 8 (2P Up)
+	tst	r0, #1 << 22;	orrne	r4, r4, #0x200000	@ 5 (2P Down)
+	tst	r1, #1 << 5;	orrne	r4, r4, #0x100	@ Menu (2P Microphone)
 
 	sub	sp, #0x0C
 	mov	r0, #0x02
@@ -347,6 +366,19 @@ touchpad_read_input:
 	mov	r0, r4
 	pop	{r4, pc}
 
+frameskip_inc:
+	add	r10, #1
+	cmp	r10, #7
+	subeq r10, #1
+	str	r10, [r9, #s_frameskip]
+	bx lr
+
+frameskip_dec:
+	subs	r10, #1
+	addeq r10, #1
+	str	r10, [r9, #s_frameskip]
+	bx lr
+
 save_state:
 	str lr, saved_state_cpu_status+56
 	adr lr, saved_state_cpu_status
@@ -362,8 +394,7 @@ save_state:
 	str r0, [r2]
 	add r3, r3, #4
 	add r2, r2, #4
-	sub r1, r1, #4
-	cmp r1, #0
+	subs r1, r1, #4
 	bne sstate_loop
 	
 	mov r0, #1
@@ -374,7 +405,7 @@ save_state:
 load_state:
 	ldr r0, save_state_exists
 	cmp r0, #0
-	moveq pc,lr
+	bxeq	lr
 
 	mov r1, #s_path
 	sub r3, r9, #s_path
@@ -384,8 +415,7 @@ load_state:
 	str r0, [r2]
 	add r3, r3, #4
 	add r2, r2, #4
-	sub r1, r1, #4
-	cmp r1, #0
+	subs r1, r1, #4
 	bne lstate_loop
 	
 	ldr r0, saved_state_cpu_cpsr
