@@ -466,6 +466,8 @@ mmc3_bank_select:
 mmc3_bank_data:
 	ldrb	r1, [r9, #s_mmc3_bank_select]
 	and	r3, r1, #7
+	cmp r3, #2
+	bicmi	r0, r0, #1
 	add	r3, r3, r9
 	strb	r0, [r3, #s_mmc3_bank]
 	b	mmc3_update
