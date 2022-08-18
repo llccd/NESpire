@@ -19,10 +19,10 @@ main:
 	@ Get our folder path
 	add	r4, r9, #s_path
 	mov	r2, r4
-	movs	r0, r0		@ argc
-	ldrne	r1, [r1]	@ argv[0]
-	movnes	r1, r1
-	beq	2f
+	subs	r5, r0, #1		@ argc - 1
+	ldrpl	r1, [r1, r5, lsl #2]	@ argv[argc - 1]
+	movpls	r1, r1
+	ble	2f
 1:	ldrb	r0, [r1], #1
 	strb	r0, [r4], #1
 	teq	r0, #'\'

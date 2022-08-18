@@ -10,7 +10,19 @@ title:
 rom_menu:
 	push	{r4-r11, lr}
 
+	movs	r5, r5
+	bmi	2f
 	ldr	r0, [r9, #s_path_filename]
+1:	ldrb	r2, [r0], #1
+	movs	r2, r2
+	bne	1b
+	sub	r0, #8
+	str	r0, [r9, #s_path_extension]
+	add	r0, r9, #s_path
+	bl	load_rom
+	movs	r0, r0
+	beq	load_success
+2:	ldr	r0, [r9, #s_path_filename]
 	adr	r1, nes_rom_file_mask
 	swi	e_strcpy
 
