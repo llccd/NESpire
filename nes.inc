@@ -102,6 +102,10 @@
 #define s_chr_ptr               0x0AFC
 
 #define s_mapper_state          0x0B00  // 0010 bytes
+#define s_mapper_chr_ro         0x0B70
+#define s_mapper_read_lo        0x0B74
+#define s_mapper_write_lo       0x0B78
+#define s_mapper_use_6000       0x0B7C
 
 #define s_path_filename         0x0B80
 #define s_path_extension        0x0B84

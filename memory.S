@@ -36,9 +36,9 @@ mem_read_ram:
 @ 4000-401F: 2A03 registers
 @ 4020-5FFF: Expansion ROM
 	sub	r3, r2, #0x4000
-	cmp r3, #0x20
-	bcc	mem_read_4000_to_401f
-	b	mem_read_bad
+	cmp	r3, #0x20
+	bcc	mem_read_4000_to_401F
+	ldr	pc, [r9, #s_mapper_read_lo]
 @ 6000-7FFF: SRAM
 	add	r3, r9, #s_sram - 0x6000
 	ldrb	r0, [r3, r2]
@@ -124,7 +124,7 @@ mem_read_2002:
 	strb	r3, [r9, #s_ppu_status]
 	bx	lr
 
-mem_read_4000_to_401f:
+mem_read_4000_to_401F:
 	cmp	r3, #0x16
 	beq	mem_read_4016
 	cmp	r3, #0x17
@@ -134,16 +134,16 @@ mem_read_4016:
 	ldr	r3, [r9, #s_input_queue]
 	and	r0, r3, #1
 	mov	r3, r3, lsr #1
-	tst r3, #0x80
-	orreq r3, r3, #0x80
-	orrne r0, r0, #4
+	tst	r3, #0x80
+	orreq	r3, r3, #0x80
+	orrne	r0, r0, #4
 	strb	r3, [r9, #s_input_queue]
 	bx	lr
 mem_read_4017:
 	ldrb	r3, [r9, #s_input_queue + 2]
 	and	r0, r3, #1
 	mov	r3, r3, lsr #1
-	orr r3, r3, #0x80
+	orr	r3, r3, #0x80
 	strb	r3, [r9, #s_input_queue + 2]
 	bx	lr
 
@@ -182,13 +182,13 @@ mem_write_ram:
 @ 4000-401F: 2A03 registers
 @ 4020-5FFF: Mapper registers
 	sub	r3, r2, #0x4000
-	cmp r3, #0x20
-	bcc	mem_write_4000_to_401f
-	bx	lr
+	cmp	r3, #0x20
+	bcc	mem_write_4000_to_401F
+	b	mem_write_4020_to_5FFF
 @ 6000-7FFF: SRAM
 	add	r3, r9, #s_sram - 0x6000
 	strb	r0, [r3, r2]
-	bx	lr
+	b	mem_write_6000_to_7FFF
 	nop
 @ 8000-FFFF: Mapper registers
 	.rept	4
@@ -222,9 +222,14 @@ mem_write_2007:
 	cmp	r2, #0x3F00
 	bcs	mem_write_2007_palette
 	mov	r3, r2, lsr #10
+	push	{r2}
+	ldrb	r2, [r9, #s_mapper_chr_ro]
+	mov	r2, r2, lsr r3
 	add	r3, r9, r3, lsl #2
 	ldr	r3, [r3, #s_ppu_mem_map]
-	strb	r0, [r3, r2]    @ TODO: don't allow write to CHR-ROM
+	tst	r2, #1
+	pop	{r2}
+	streqb	r0, [r3, r2]
 
 	b	mem_write_2007_common
 mem_write_2007_palette:
@@ -314,7 +319,7 @@ mem_write_2000:
 	tst	r2, #0x20
 	movne	r3, #0
 	strneb	r3, [r9, #s_spr_loc_table_valid]
-	and r2, r2, r0
+	and	r2, r2, r0
 	ldr	r3, [r9, #s_ppu_scroll]
 	strb	r0, [r9, #s_ppu_control]
 	bic	r3, #0x0C00
@@ -328,7 +333,7 @@ mem_write_2000:
 	strb	r2, [r9, #s_nmi_reset]
 	bx	lr
 
-mem_write_4000_to_401f:
+mem_write_4000_to_401F:
 	cmp	r3, #0x14
 	beq	mem_write_4014
 	cmp	r3, #0x16
@@ -375,6 +380,15 @@ mem_write_4014_done:
 	sub	cpu_cycles, cpu_cycles, #512 * CPU_CYCLE_LENGTH
 	sub	cpu_cycles, cpu_cycles, #1 * CPU_CYCLE_LENGTH
 	bx	lr
+
+mem_write_6000_to_7FFF:
+	ldr	r3, [r9, #s_mapper_use_6000]
+	tst	r3, #1
+	bxeq	lr
+mem_write_4020_to_5FFF:
+	str	lr, [sp, #-4]!
+	adr	lr, return_from_mapper
+	ldr	pc, [r9, #s_mapper_write_lo]
 
 mem_jump_split:
 	add	r2, r2, r3, lsl #8
