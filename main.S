@@ -8,7 +8,6 @@ main:
 	sub	sp, sp, #s_SIZE
 	bic	sp, sp, #s_ALIGN - 1
 	mov	r9, sp
-	sub	sp, sp, #s_path // Reserve space for state
 	mov	r4, #0
 	mov	r6, #s_SIZE
 1:	subs	r6, r6, #4
@@ -88,6 +87,8 @@ cx:
 exit_emulator:
 	ldr	r0, [r9, #s_prg_ptr]
 	swi	e_free
+	ldr	r0, save_state_ptr
+	swi	e_free
 	bl	restore_interrupts
 unknown_hardware:
 	ldr	sp, [r9, #s_saved_sp]
@@ -159,6 +160,78 @@ restore_interrupts:
 	ldr	r2, [r9, #s_saved_irq_handler]
 	str	r2, [r1, #0x38]
 	bx	lr
+
+save_state:
+	ldr	r7, save_state_ptr
+	cmp	r7, #0
+	bne	1f
+	mov	r0, #0x4400
+	mov	r6, lr
+	ldrb	r1, [r9, #s_rom_header + 5]
+	movs	r1, r1
+	addeq	r0, r0, #0x2000
+	swi	e_malloc
+	mov	lr, r6
+	movs	r7, r0
+	bxeq	lr
+	str	r7, save_state_ptr
+
+1:	mov	r6, #0x4400
+	mov	r10, r9
+sstate_loop:
+	ldm	r10!, {r0-r3}
+	stm	r7!, {r0-r3}
+	subs	r6, r6, #16
+	bne	sstate_loop
+	ldrb	r1, [r9, #s_rom_header + 5]
+	movs	r1, r1
+	bne	1f
+	mov	r6, #0x2000
+	ldr	r10, [r9, #s_chr_ptr]
+sstate_loop2:
+	ldm	r10!, {r0-r3}
+	stm	r7!, {r0-r3}
+	subs	r6, r6, #16
+	bne	sstate_loop2
+
+1:	adr	r11, saved_state_cpu_status
+	ldm	sp, {r0-r3, r6-r7, r10}
+	stm	r11, {r0-r3, r6-r7, r10}
+	bx	lr
+
+load_state:
+	ldr	r7, save_state_ptr
+	cmp	r7, #0
+	bxeq	lr
+	mov	r6, #0x4400
+	mov	r10, r9
+lstate_loop:
+	ldm	r7!, {r0-r3}
+	stm	r10!, {r0-r3}
+	subs	r6, r6, #16
+	bne	lstate_loop
+	ldrb	r1, [r9, #s_rom_header + 5]
+	movs	r1, r1
+	bne	1f
+	mov	r6, #0x2000
+	ldr	r10, [r9, #s_chr_ptr]
+lstate_loop2:
+	ldm	r7!, {r0-r3}
+	stm	r10!, {r0-r3}
+	subs	r6, r6, #16
+	bne	lstate_loop2
+
+1:	adr	r11, saved_state_cpu_status
+	ldm	r11, {r0-r3, r6-r7, r10}
+	stm	sp, {r0-r3, r6-r7, r10}
+	bx	lr
+
+save_state_ptr: .word 0
+
+saved_state_cpu_status:
+	.rept 7
+	.word 0
+	.endr
 
 .globl newframe
 newframe:
@@ -379,57 +452,4 @@ frameskip_dec:
 	str	r10, [r9, #s_frameskip]
 	bx lr
 
-save_state:
-	str lr, saved_state_cpu_status+56
-	adr lr, saved_state_cpu_status
-	stm lr, {r0-r13}
-	mrs r0, cpsr
-	str r0, saved_state_cpu_cpsr
-	
-	mov r1, #s_path
-	sub r2, r9, #s_path
-	mov r3, r9
-	sstate_loop:
-	ldr r0, [r3]
-	str r0, [r2]
-	add r3, r3, #4
-	add r2, r2, #4
-	subs r1, r1, #4
-	bne sstate_loop
-	
-	mov r0, #1
-	str r0, save_state_exists
-	
-	ldr lr, saved_state_cpu_status+56 // subroutine return
-
-load_state:
-	ldr r0, save_state_exists
-	cmp r0, #0
-	bxeq	lr
-
-	mov r1, #s_path
-	sub r3, r9, #s_path
-	mov r2, r9
-	lstate_loop:
-	ldr r0, [r3]
-	str r0, [r2]
-	add r3, r3, #4
-	add r2, r2, #4
-	subs r1, r1, #4
-	bne lstate_loop
-	
-	ldr r0, saved_state_cpu_cpsr
-	msr cpsr_all, r0
-	adr lr, saved_state_cpu_status
-	ldm lr, {r0-r13,pc} // returns to previous instruction after save_state
-
-save_state_exists: .word 0
-
-saved_state_cpu_status:
-	.rept 15
-	.word 0
-	.endr
-saved_state_cpu_cpsr:
-	.word 0
-	
 	.pool

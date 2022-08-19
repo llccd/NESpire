@@ -274,7 +274,7 @@ load_rom:
 	add	r0, r1, r5
 	str	r0, [r9, #s_mapper]
 
-	adr	r0, mapper_NROM
+	adr	r0, mapper_nop
 	str	r0, [r9, #s_mapper_write_lo]
 	str	r0, [r9, #s_mapper_read_lo]
 	adr	lr, 1f
@@ -311,7 +311,7 @@ error_messages = .+8
 
 mapper_table:
 .macro MAPPER n, addr, reset; .hword \n, \addr - mapper_table, \reset - mapper_table; .endm
-	MAPPER   0, mapper_NROM, mapper_init_general
+	MAPPER   0, mapper_nop, mapper_init_general
 	MAPPER   1, mapper_MMC1, mapper_init_general
 	MAPPER   2, mapper_UxROM, mapper_init_general
 	MAPPER   3, mapper_CNROM, mapper_init_general
@@ -332,11 +332,11 @@ mapper_table:
 	MAPPER  88, mapper_Namco108_88, mapper_init_general
 	MAPPER  94, mapper_94, mapper_init_general
 	MAPPER 107, mapper_107, mapper_init_prg32k
-	MAPPER 133, mapper_NROM, mapper_init_133
-	MAPPER 143, mapper_NROM, mapper_init_143
+	MAPPER 133, mapper_nop, mapper_init_133
+	MAPPER 143, mapper_nop, mapper_init_143
 	MAPPER 144, mapper_144, mapper_init_prg32k
-	MAPPER 145, mapper_NROM, mapper_init_145
-	MAPPER 146, mapper_NROM, mapper_init_79
+	MAPPER 145, mapper_nop, mapper_init_145
+	MAPPER 146, mapper_nop, mapper_init_79
 	MAPPER 148, mapper_148, mapper_init_prg32k
 	MAPPER 149, mapper_149, mapper_init_general
 	MAPPER 152, mapper_152, mapper_init_general
@@ -348,7 +348,7 @@ mapper_table:
 	MAPPER 216, mapper_216, mapper_init_prg32k
 	MAPPER 228, mapper_Action_Enterprises, mapper_init_228
 	MAPPER 232, mapper_Quattro, mapper_init_Quattro
-	MAPPER 240, mapper_NROM, mapper_init_240
+	MAPPER 240, mapper_nop, mapper_init_240
 	MAPPER 241, mapper_BxROM, mapper_init_prg32k
 	MAPPER 250, mapper_250, mapper_init_general
 mapper_table_end:
@@ -381,21 +381,9 @@ mapper_write_lo_228:
 	strb	r0, [r3, #s_mapper_state]
 	bx	lr
 
-mapper_init_NINA001:
-	adr	r0, mapper_write_lo_NINA001
-	b	1f
-mapper_init_133:
-	adr	r0, mapper_write_lo_133
-	b	1f
-mapper_init_145:
-	adr	r0, mapper_write_lo_145
-	b	1f
-mapper_init_240:
-	adr	r0, mapper_GxROM
-	b	1f
 mapper_init_79:
 	adr	r0, mapper_write_lo_79
-1:
+mapper_write_lo:
 	str	r0, [r9, #s_mapper_write_lo]
 mapper_init_prg32k:
 	mov	r0, #0
@@ -490,6 +478,9 @@ mapper_180:
 mapper_CPROM:
 	b	map_chr_4kB_to_1000
 
+mapper_init_145:
+	adr	r0, mapper_write_lo_145
+	b	mapper_write_lo
 mapper_write_lo_145:
 	tst	r2, #0x100
 	bxeq	lr
@@ -505,8 +496,8 @@ mapper_CNROM:
 #define s_mmc3_counter_reset     (s_mapper_state+11)
 #define s_mmc3_irq_enabled       (s_mapper_state+12)
 mapper_250:
-	and	r0, r2, #0xff
-	and	r1, r2, #0xe000
+	and	r0, r2, #0xFF
+	and	r1, r2, #0xE000
 	and	r2, r2, #0x0400
 	orr	r2, r1, r2, lsr #10
 mapper_MMC3:
@@ -518,7 +509,7 @@ mapper_MMC3:
 	b	mmc3_bank_select
 	b	mmc3_bank_data
 	b	mmc3_mirroring
-mapper_NROM:
+mapper_nop:
 	bx	lr
 	b	mmc3_irq_latch
 	b	mmc3_irq_reload
@@ -630,6 +621,9 @@ mapper_177:
 	pop	{lr}
 	b	map_prg_32kB
 
+mapper_init_240:
+	adr	r0, mapper_GxROM
+	b	mapper_write_lo
 mapper_GxROM:
 	push	{lr}
 	mov	r3, r0
@@ -666,6 +660,9 @@ mapper_148:
 	pop	{lr}
 	b	map_prg_32kB
 
+mapper_init_NINA001:
+	adr	r0, mapper_write_lo_NINA001
+	b	mapper_write_lo
 mapper_write_lo_NINA001:
 	ldr	r3, =0x7FFF
 	cmp	r2, r3
@@ -678,6 +675,9 @@ mapper_write_lo_NINA001:
 	beq	map_prg_32kB
 	bx	lr
 
+mapper_init_133:
+	adr	r0, mapper_write_lo_133
+	b	mapper_write_lo
 mapper_write_lo_133:
 	tst	r2, #0x100
 	bxeq	lr

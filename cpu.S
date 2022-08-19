@@ -609,7 +609,8 @@ reset:
 
 main_loop:
 	add	cpu_cycles, cpu_cycles, #0x100
-	add	cpu_cycles, cpu_cycles, #0x055
+	adds	cpu_cycles, cpu_cycles, #0x055
+	bmi	no_cycles
 	adr	cpu_itable, insn_table
 
 	ldr	r2, [r9, #s_interrupts]
@@ -626,19 +627,9 @@ cpu_enter:
 	add	pc, cpu_itable, r1, lsl #2
 cpu_leave:
 	sub	cpu_pc, cpu_pc, #1
-
-	bl	ppu_next_scanline
-
-	@ TODO: this should be for MMC3 only
-	ldr	r0, [r9, #s_ppu_control]
-	tst	r0, #0x1800
-	beq	1f
-	ldr	r0, [r9, #s_ppu_scanline]
-	cmp	r0, #241
-	blcc	mmc3_scanline
-1:
-
-	b	main_loop
+no_cycles:
+	adr	lr, main_loop
+	b	ppu_next_scanline
 
 nmi_or_reset:
 	tst	r2, #0x7F000000

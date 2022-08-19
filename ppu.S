@@ -41,6 +41,8 @@ ppu_next_scanline:
 	bic	r1, r1, r2
 	orr	r1, r1, r0
 	str	r1, [r9, #s_ppu_address]
+	@ TODO: this should be for MMC3 only
+	bl	mmc3_scanline
 1:
 
 	ldr	r0, [r9, #s_frameskip_cur]

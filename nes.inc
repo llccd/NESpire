@@ -49,9 +49,9 @@
 #define s_flags_di              0x0824  // 0004 bytes
 #define s_pc_base               0x0828  // 0004 bytes
 #define s_interrupts            0x082C
-#define s_irq_from_apu          0x082C
-#define s_irq_from_mapper       0x082D
-#define s_nmi_reset             0x082F  // set to FF for reset, 80 for nmi
+#define s_irq_from_apu          s_interrupts+0
+#define s_irq_from_mapper       s_interrupts+1
+#define s_nmi_reset             s_interrupts+3  // set to FF for reset, 80 for nmi
 
 #define s_input_status          0x0840
 #define s_input_queue           0x0844

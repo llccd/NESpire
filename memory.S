@@ -319,18 +319,20 @@ mem_write_2000:
 	tst	r2, #0x20
 	movne	r3, #0
 	strneb	r3, [r9, #s_spr_loc_table_valid]
-	and	r2, r2, r0
+	@and	r2, r2, r0
 	ldr	r3, [r9, #s_ppu_scroll]
 	strb	r0, [r9, #s_ppu_control]
 	bic	r3, #0x0C00
 	and	r0, r0, #0x03
 	orr	r3, r3, r0, lsl #10
 	str	r3, [r9, #s_ppu_scroll]
-	tst	r2, #0x80
-	bxeq	lr
-	ldrb	r2, [r9, #s_ppu_status]
-	and	r2, r2, #0x80   @ NMI enabled?
-	strb	r2, [r9, #s_nmi_reset]
+	@ Generate NMI if 2002.b7 set and 2000.b7 changed from 0 to 1
+	@ Cause graphical errors as irq is sampled scanline-by-scanline
+	@tst	r2, #0x80
+	@bxeq	lr
+	@ldrb	r2, [r9, #s_ppu_status]
+	@and	r2, r2, #0x80
+	@strb	r2, [r9, #s_nmi_reset]
 	bx	lr
 
 mem_write_4000_to_401F:
