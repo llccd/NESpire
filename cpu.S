@@ -603,21 +603,21 @@ push_pc:
 reset:
 	mov	r0, #0
 	str	r0, [r9, #s_ppu_scanline]
-	mov	cpu_cycles, #-1
-
-	strb	cpu_cycles, [r9, #s_nmi_reset]  @ 0xFF = reset
+	mov	cpu_cycles, #0x154
+	adr	cpu_itable, insn_table
+	INTERRUPT 0xFFFC, 0x00
 
 main_loop:
-	add	cpu_cycles, cpu_cycles, #0x100
-	adds	cpu_cycles, cpu_cycles, #0x055
-	bmi	no_cycles
 	adr	cpu_itable, insn_table
+	add	cpu_cycles, cpu_cycles, #0xD
+	adds	cpu_cycles, cpu_cycles, #0x148
+	bmi	no_cycles
 
 	ldr	r2, [r9, #s_interrupts]
-	ldr	r0, [r9, #s_flags_di]
 	movs	r2, r2
-	bmi	nmi_or_reset
-	beq	cpu_enter
+	submi	cpu_cycles, cpu_cycles, #0x148
+	ble	cpu_enter
+	ldr	r0, [r9, #s_flags_di]
 	tst	r0, #NES_FLAG_I
 	beq	irq
 
@@ -627,18 +627,19 @@ cpu_enter:
 	add	pc, cpu_itable, r1, lsl #2
 cpu_leave:
 	sub	cpu_pc, cpu_pc, #1
+
+	ldr	r2, [r9, #s_interrupts]
+	movs	r2, r2
+	bmi	nmi
 no_cycles:
 	adr	lr, main_loop
 	b	ppu_next_scanline
 
-nmi_or_reset:
-	tst	r2, #0x7F000000
+nmi:
+	add	cpu_cycles, cpu_cycles, #0x148
 	bic	r2, r2, #0xFF000000
 	str	r2, [r9, #s_interrupts]
-	bne	intr_reset
 	INTERRUPT 0xFFFA, 0x20
-intr_reset:
-	INTERRUPT 0xFFFC, 0x00
 irq:
 	INTERRUPT 0xFFFE, 0x20
 
